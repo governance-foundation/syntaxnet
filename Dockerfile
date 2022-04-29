@@ -36,7 +36,8 @@ RUN mkdir -p $SYNTAXNETDIR \
 
 # Install common Python dependencies. Similar to above, remove caches
 # afterwards to help keep Docker images smaller.
-RUN pip install --ignore-installed pip \
+RUN wget https://bootstrap.pypa.io/pip/2.7/get-pip.py \
+    && python get-pip.py \
     && python -m pip install numpy \
     && rm -rf /root/.cache/pip /tmp/pip*
 RUN python -m pip install \
