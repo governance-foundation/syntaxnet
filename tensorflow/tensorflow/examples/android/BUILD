@@ -75,6 +75,7 @@ android_binary(
     custom_package = "org.tensorflow.demo",
     inline_constants = 1,
     manifest = "AndroidManifest.xml",
+    manifest_merger = "legacy",
     resource_files = glob(["res/**"]),
     tags = [
         "manual",
@@ -86,14 +87,16 @@ android_binary(
     ],
 )
 
+# LINT.IfChange
 filegroup(
     name = "external_assets",
     srcs = [
         "@inception5h//:model_files",
-        "@mobile_multibox//:model_files",
+        "@mobile_ssd//:model_files",
         "@stylize//:model_files",
     ],
 )
+# LINT.ThenChange(//tensorflow/examples/android/download-models.gradle)
 
 filegroup(
     name = "all_files",

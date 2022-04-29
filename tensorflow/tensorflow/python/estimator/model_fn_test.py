@@ -19,8 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.estimator import export
 from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -67,11 +67,12 @@ class EstimatorSpecTrainTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': export.ClassificationOutput(classes=classes)
+              'head_name': export_output.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
-          scaffold=monitored_session.Scaffold())
+          scaffold=monitored_session.Scaffold(),
+          evaluation_hooks=[_FakeHook()])
 
   def testLossNumber(self):
     """Tests that error is raised when loss is a number (not Tensor)."""
@@ -217,11 +218,32 @@ class EstimatorSpecEvalTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': export.ClassificationOutput(classes=classes)
+              'head_name': export_output.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
-          scaffold=monitored_session.Scaffold())
+          scaffold=monitored_session.Scaffold(),
+          evaluation_hooks=[_FakeHook()])
+
+  def testEvaluationHookInvalid(self):
+    with ops.Graph().as_default(), self.test_session():
+      with self.assertRaisesRegexp(
+          TypeError, 'All hooks must be SessionRunHook instances'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.EVAL,
+            loss=constant_op.constant(1.),
+            evaluation_hooks=[_InvalidHook()])
+
+  def testTupleMetric(self):
+    """Tests that no errors are raised when a metric is tuple-valued."""
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      model_fn.EstimatorSpec(
+          mode=model_fn.ModeKeys.EVAL,
+          loss=loss,
+          eval_metric_ops={
+              'some_metric': ((loss, loss, (constant_op.constant(2), loss)),
+                              control_flow_ops.no_op())})
 
   def testLoss1DTensor(self):
     """Tests that no errors are raised when loss is 1D tensor."""
@@ -345,7 +367,7 @@ class EstimatorSpecEvalTest(test.TestCase):
       loss = constant_op.constant(1.)
       with self.assertRaisesRegexp(
           TypeError,
-          (r'Values of eval_metric_ops must be \(metric_tensor, update_op\) '
+          (r'Values of eval_metric_ops must be \(metric_value, update_op\) '
            'tuples')):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
@@ -362,6 +384,17 @@ class EstimatorSpecEvalTest(test.TestCase):
             predictions={'loss': loss},
             loss=loss,
             eval_metric_ops={'loss': ('NonTensor', loss)})
+
+  def testEvalMetricNestedNoTensorOrOperation(self):
+    with ops.Graph().as_default(), self.test_session():
+      loss = constant_op.constant(1.)
+      with self.assertRaisesRegexp(TypeError, 'must be Operation or Tensor'):
+        model_fn.EstimatorSpec(
+            mode=model_fn.ModeKeys.EVAL,
+            predictions={'loss': loss},
+            loss=loss,
+            eval_metric_ops={'loss': ((('NonTensor',),),
+                                      control_flow_ops.no_op())})
 
   def testEvalMetricOpsFromDifferentGraph(self):
     with ops.Graph().as_default():
@@ -401,11 +434,12 @@ class EstimatorSpecInferTest(test.TestCase):
           train_op=control_flow_ops.no_op(),
           eval_metric_ops={'loss': (control_flow_ops.no_op(), loss)},
           export_outputs={
-              'head_name': export.ClassificationOutput(classes=classes)
+              'head_name': export_output.ClassificationOutput(classes=classes)
           },
           training_chief_hooks=[_FakeHook()],
           training_hooks=[_FakeHook()],
-          scaffold=monitored_session.Scaffold())
+          scaffold=monitored_session.Scaffold(),
+          evaluation_hooks=[_FakeHook()])
 
   def testPredictionsMissing(self):
     with ops.Graph().as_default(), self.test_session():
@@ -446,7 +480,7 @@ class EstimatorSpecInferTest(test.TestCase):
         model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.PREDICT,
             predictions=predictions,
-            export_outputs=export.ClassificationOutput(classes=classes))
+            export_outputs=export_output.ClassificationOutput(classes=classes))
 
   def testExportOutputsValueNotExportOutput(self):
     with ops.Graph().as_default(), self.test_session():
@@ -465,7 +499,7 @@ class EstimatorSpecInferTest(test.TestCase):
     with ops.Graph().as_default(), self.test_session():
       predictions = {'loss': constant_op.constant(1.)}
       output_1 = constant_op.constant([1.])
-      regression_output = export.RegressionOutput(value=output_1)
+      regression_output = export_output.RegressionOutput(value=output_1)
       export_outputs = {
           'head-1': regression_output,
           }
@@ -488,9 +522,9 @@ class EstimatorSpecInferTest(test.TestCase):
       output_3 = constant_op.constant(['3'])
       export_outputs = {
           signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
-          export.RegressionOutput(value=output_1),
-          'head-2': export.ClassificationOutput(classes=output_2),
-          'head-3': export.PredictOutput(outputs={
+          export_output.RegressionOutput(value=output_1),
+          'head-2': export_output.ClassificationOutput(classes=output_2),
+          'head-3': export_output.PredictOutput(outputs={
               'some_output_3': output_3
           })}
       estimator_spec = model_fn.EstimatorSpec(
@@ -506,9 +540,9 @@ class EstimatorSpecInferTest(test.TestCase):
       output_2 = constant_op.constant(['2'])
       output_3 = constant_op.constant(['3'])
       export_outputs = {
-          'head-1': export.RegressionOutput(value=output_1),
-          'head-2': export.ClassificationOutput(classes=output_2),
-          'head-3': export.PredictOutput(outputs={
+          'head-1': export_output.RegressionOutput(value=output_1),
+          'head-2': export_output.ClassificationOutput(classes=output_2),
+          'head-3': export_output.PredictOutput(outputs={
               'some_output_3': output_3
           })}
       with self.assertRaisesRegexp(

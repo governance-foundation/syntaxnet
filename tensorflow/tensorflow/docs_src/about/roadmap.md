@@ -5,16 +5,15 @@ TensorFlow is a fast moving project. In order for the community to better
 understand what the near future will bring, this document shares what we are
 working on internally. Many of these features were requested by the community,
 and we welcome
-[contributions](https://github.com/tensorflow/tensorflow/labels/contributions%20welcome).
+[contributions](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
 
 The features on this list are targeted for the next few months. At this point,
 we do not have timelines for these features.
 
 ### Improve non-Python language support
 
-* Improve C++ API for graph construction and gradients
-* Java language support
-* Go language support
+* Support for adding gradient computation for graphs constructed in other
+  languages (C++, Java, Go etc.)
 
 ### Making TensorFlow easier to use
 * High-level APIs

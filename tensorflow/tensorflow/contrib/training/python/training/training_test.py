@@ -19,13 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
-
-# pylint: disable=g-import-not-at-top
-# TODO(jart): #6568 Remove this hack that makes dlopen() not crash.
-if hasattr(sys, 'getdlopenflags') and hasattr(sys, 'setdlopenflags'):
-  import ctypes
-  sys.setdlopenflags(sys.getdlopenflags() | ctypes.RTLD_GLOBAL)
 
 import numpy as np
 
@@ -36,6 +29,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as variables_lib2
 from tensorflow.python.ops.losses import losses
@@ -55,6 +49,35 @@ def logistic_classifier(inputs):
 def batchnorm_classifier(inputs):
   inputs = layers.batch_norm(inputs, decay=0.1)
   return layers.fully_connected(inputs, 1, activation_fn=math_ops.sigmoid)
+
+
+class ClipGradsTest(test.TestCase):
+
+  def testClipGrads(self):
+    xs = variables_lib2.Variable(0.0)
+    ys = xs * 4.0
+    grads = gradients_impl.gradients([ys], [xs])
+    gradients_to_variables = list(zip(grads, [xs]))
+    clipped_gradients_to_variables = training.clip_gradient_norms(
+        gradients_to_variables, 3.0)
+
+    with self.test_session() as session:
+      session.run(variables_lib2.global_variables_initializer())
+      self.assertAlmostEqual(4.0, gradients_to_variables[0][0].eval())
+      self.assertAlmostEqual(3.0, clipped_gradients_to_variables[0][0].eval())
+
+  def testClipGradsFn(self):
+    xs = variables_lib2.Variable(0.0)
+    ys = xs * 4.0
+    grads = gradients_impl.gradients([ys], [xs])
+    gradients_to_variables = list(zip(grads, [xs]))
+    clipped_gradients_to_variables = training.clip_gradient_norms_fn(3.0)(
+        gradients_to_variables)
+
+    with self.test_session() as session:
+      session.run(variables_lib2.global_variables_initializer())
+      self.assertAlmostEqual(4.0, gradients_to_variables[0][0].eval())
+      self.assertAlmostEqual(3.0, clipped_gradients_to_variables[0][0].eval())
 
 
 class CreateTrainOpTest(test.TestCase):
@@ -515,7 +538,7 @@ class TrainTest(test.TestCase):
         # Initialize the variables.
         session.run(variables_lib2.global_variables_initializer())
 
-        # Get the intial weights and biases values.
+        # Get the initial weights and biases values.
         weights_values, biases_values = session.run([weights, biases])
         self.assertGreater(np.linalg.norm(weights_values), 0)
         self.assertAlmostEqual(np.linalg.norm(biases_values), 0)

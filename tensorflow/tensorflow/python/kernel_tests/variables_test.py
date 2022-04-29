@@ -190,13 +190,10 @@ class VariablesTestCase(test.TestCase):
         d = constant_op.constant(2.0)
         # variables do not.
         var_x = variables.Variable(2.0)
-        # initialized_value do not either.
-        inited_x = var_x.initialized_value()
       self.assertEqual([c.op], d.op.control_inputs)
       self.assertEqual([], var_x.initializer.control_inputs)
       self.assertEqual([], var_x.value().op.control_inputs)
       self.assertEqual([], var_x._ref().op.control_inputs)  # pylint: disable=protected-access
-      self.assertEqual([var_x.initializer], inited_x.op.control_inputs)
 
   def testControlFlow(self):
     with self.test_session() as sess:
@@ -234,6 +231,19 @@ class VariablesTestCase(test.TestCase):
       sess.run(v0.initializer)
       sess.run(add)
 
+  def testControlFlowInitialization(self):
+    """Expects an error if an initializer is in a control-flow scope."""
+    def cond(i, _):
+      return i < 10
+
+    def body(i, _):
+      zero = array_ops.zeros([], dtype=dtypes.int32)
+      v = variables.Variable(initial_value=zero)
+      return (i + 1, v.read_value())
+
+    with self.assertRaisesRegexp(ValueError, "inside a control-flow"):
+      control_flow_ops.while_loop(cond, body, [0, 0])
+
   def testUseVariableAsTensor(self):
     with self.test_session():
       var_x = variables.Variable(2.0)
@@ -264,8 +274,6 @@ class VariablesTestCase(test.TestCase):
       var_cached = variables.Variable(2.0, caching_device="/job:foo")
       self.assertFalse(var_cached.device.startswith("/job:foo"))
       self.assertTrue(var_cached.value().device.startswith("/job:foo"))
-      self.assertTrue(var_cached.initialized_value().device.startswith(
-          "/job:foo"))
 
   def testCollections(self):
     with self.test_session():
@@ -281,6 +289,21 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual([var_x, var_y, var_z, var_t],
                        variables.global_variables())
       self.assertEqual([var_x, var_z, var_t], variables.trainable_variables())
+
+  def testCollectionsWithScope(self):
+    with self.test_session():
+      with ops.name_scope("scope_1"):
+        var_x = variables.Variable(2.0)
+      with ops.name_scope("scope_2"):
+        var_y = variables.Variable(2.0)
+
+      self.assertEqual([var_x, var_y], variables.global_variables())
+      self.assertEqual([var_x], variables.global_variables("scope_1"))
+      self.assertEqual([var_y], variables.global_variables("scope_2"))
+
+      self.assertEqual([var_x, var_y], variables.trainable_variables())
+      self.assertEqual([var_x], variables.trainable_variables("scope_1"))
+      self.assertEqual([var_y], variables.trainable_variables("scope_2"))
 
   def testOperators(self):
     with self.test_session():
@@ -398,14 +421,33 @@ class VariablesTestCase(test.TestCase):
       self.assertEqual(v1.shape, v2.shape)
       self.assertAllClose(np.negative(value), v2.initial_value.eval())
 
-      # Once v2.initial_value.eval() has been called, v1 has effectively been
-      # initialized.
-      self.assertAllClose(value, v1.eval())
-
       with self.assertRaises(errors_impl.FailedPreconditionError):
         v2.eval()
       variables.global_variables_initializer().run()
       self.assertAllClose(np.negative(value), v2.eval())
+
+  def testConstraintArg(self):
+    constraint = lambda x: x
+    v = variables.Variable(
+        lambda: constant_op.constant(1.),
+        constraint=constraint)
+    self.assertEqual(v.constraint, constraint)
+
+    constraint = 0
+    with self.assertRaises(ValueError):
+      v = variables.Variable(
+          lambda: constant_op.constant(1.),
+          constraint=constraint)
+
+  def testNoRefDataRace(self):
+    with self.test_session():
+      a = variables.Variable([1, 2, 3], dtype=dtypes.float32)
+      b = variables.Variable(a.initialized_value() + 2)
+      c = variables.Variable(b.initialized_value() + 2)
+      variables.global_variables_initializer().run()
+      self.assertAllEqual(a.eval(), [1, 2, 3])
+      self.assertAllEqual(b.eval(), [3, 4, 5])
+      self.assertAllEqual(c.eval(), [5, 6, 7])
 
   def testInitializerFunctionDevicePlacement(self):
     with self.test_session():

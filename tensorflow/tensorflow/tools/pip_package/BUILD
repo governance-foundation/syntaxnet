@@ -55,6 +55,15 @@ py_test(
     ],
 )
 
+py_binary(
+    name = "check_load_py_test",
+    srcs = ["check_load_py_test.py"],
+    data = [
+        "//tensorflow:all_opensource_files",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -66,23 +75,22 @@ py_binary(
         "README",
         "setup.py",
         ":included_headers",
-        "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/session_bundle:session_bundle_pip",
-        "//tensorflow/contrib/slim",
+        "//tensorflow/contrib/signal:signal_py",
         "//tensorflow/contrib/slim/python/slim/data:data_pip",
-        "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
-        "//tensorflow/contrib/specs",
-        "//tensorflow/contrib/tensor_forest:init_py",
-        "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
         "//tensorflow/python:util_example_parser_configuration",
         "//tensorflow/python/debug:debug_pip",
         "//tensorflow/python/saved_model",
+        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python/tools:tools_pip",
-        # The following target has an issue when archiving them into the python
-        # zip, exclude them for now.
-        # "//tensorflow/tensorboard",
-        # This package does not build. Exclude it in windows for now.
+        # These targets don't build on Windows yet. Exclude them for now.
+        # "//tensorflow/contrib/ndlstm",
+        # "//tensorflow/contrib/slim",
+        # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
+        # "//tensorflow/contrib/specs",
+        # "//tensorflow/contrib/tensor_forest:init_py",
+        # "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
         # "//tensorflow/examples/tutorials/mnist:package",
     ],
     srcs_version = "PY2AND3",
@@ -93,12 +101,15 @@ filegroup(
     name = "licenses",
     data = [
         "//third_party/eigen3:LICENSE",
+        "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
+        "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
+        "@fft2d//:fft/readme.txt",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
@@ -106,14 +117,19 @@ filegroup(
         "@jemalloc//:COPYING",
         "@jpeg//:LICENSE.md",
         "@libxsmm_archive//:LICENSE",
+        "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
-        "@nanopb_git//:LICENSE.txt",
+        "@grpc//third_party/nanopb:LICENSE.txt",
         "@png_archive//:LICENSE",
-        "@protobuf//:LICENSE",
+        "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
-        "@org_pocoo_werkzeug//:LICENSE",
+        "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ] + if_not_windows([
+        "@org_python_pypi_backports_weakref//:LICENSE",
+    ] + if_mkl([
+        "//third_party/mkl:LICENSE",
+        "@mkl//:LICENSE",
+    ]) + if_not_windows([
         "@nccl_archive//:LICENSE.txt",
     ]) + tf_additional_license_deps(),
 )
@@ -123,6 +139,7 @@ sh_binary(
     srcs = ["build_pip_package.sh"],
     data = select({
         "//tensorflow:windows": [":simple_console_for_windows"],
+        "//tensorflow:windows_msvc": [":simple_console_for_windows"],
         "//conditions:default": [
             ":licenses",
             "MANIFEST.in",
@@ -131,24 +148,36 @@ sh_binary(
             ":included_headers",
             ":simple_console",
             "//tensorflow:tensorflow_py",
+            "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
+            "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
             "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
             "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
+            "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/contrib/session_bundle:session_bundle_pip",
+            "//tensorflow/contrib/signal:signal_py",
             "//tensorflow/contrib/slim:slim",
             "//tensorflow/contrib/slim/python/slim/data:data_pip",
             "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
             "//tensorflow/contrib/specs:specs",
             "//tensorflow/contrib/tensor_forest:init_py",
             "//tensorflow/contrib/tensor_forest/hybrid:hybrid_pip",
+            "//tensorflow/contrib/timeseries:timeseries_pip",
+            "//tensorflow/contrib/tpu:tpu_estimator",
+            "//tensorflow/contrib/tpu:tpu_helper_library",
+            "//tensorflow/contrib/tpu:tpu_py",
             "//tensorflow/examples/tutorials/mnist:package",
+            "//tensorflow/python:distributed_framework_test_lib",
+            "//tensorflow/python:meta_graph_testdata",
+            "//tensorflow/python:spectral_ops_test_util",
             "//tensorflow/python:util_example_parser_configuration",
             "//tensorflow/python/debug:debug_pip",
+            "//tensorflow/python/eager:eager_pip",
             "//tensorflow/python/saved_model:saved_model",
             "//tensorflow/python/tools:tools_pip",
-            "//tensorflow/tensorboard",
+            "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
